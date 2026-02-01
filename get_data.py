@@ -1,58 +1,62 @@
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.optimize import curve_fit
 import os
-import glob
-import warnings
+import shutil
 
-# 忽略运行时的一些警告，保持输出整洁
-warnings.filterwarnings('ignore')
+# ==========================================
+# 1. 路径与参数定义 (使用 raw string r'' 防止转义问题)
+# ==========================================
+# 注意：Windows 路径建议在字符串前加 r，或者使用双反斜杠 \\
+data_path = r"C:\Users\lenovo\Desktop\archive\cleaned_dataset\data"
+save_path = r"C:\Users\lenovo\Desktop\archive\cleaned_dataset\charge"
+battery_id = "B0047"
+a_type = "charge"
 
-# 绘图风格设置
+# ==========================================
+# 2. 读取元数据并筛选
+# ==========================================
+# 读取 metadata.csv
+df_meta = pd.read_csv(r'C:\Users\lenovo\Desktop\archive\cleaned_dataset\metadata.csv')
 
+# 筛选符合条件的文件名
+# 假设 metadata.csv 中的顺序就是时间顺序，如果不确定，建议按 'start_time' 排序
+# df_filtered = df_meta.loc[(df_meta['battery_id'] == battery_id) & (df_meta['type'] == a_type)].sort_values('start_time')
+data_fils = df_meta.loc[(df_meta['battery_id'] == battery_id) & (df_meta['type'] == a_type), 'filename']
 
-class BatteryDatasetHandler:
-    """
-    专门处理NASA电池数据集（Patrick Fleith版本）的类
-    """
-    def __init__(self, dataset_path):
-        """
-        初始化数据集路径
-        :param dataset_path: 包含 metadata.csv 和 data/ 文件夹的根目录
-        """
-        self.dataset_path = dataset_path
-        self.metadata_file = os.path.join(dataset_path, 'metadata.csv')
-        self.data_dir = os.path.join(dataset_path, 'data')
-        
-        # 加载元数据
-        if not os.path.exists(self.metadata_file):
-            raise FileNotFoundError(f"未找到元数据文件: {self.metadata_file}")
-        
-        self.metadata = pd.read_csv(self.metadata_file)
-        print(f"成功加载元数据，共 {len(self.metadata)} 条记录。")
+print(f"找到 {len(data_fils)} 个符合条件的文件。")
 
-    def get_battery_ids(self):
-        """获取所有电池的ID列表"""
-        return self.metadata['battery_id'].unique()
+# ==========================================
+# 3. 创建目标文件夹 (如果不存在)
+# ==========================================
+if not os.path.exists(save_path):
+    os.makedirs(save_path)
+    print(f"已创建目录: {save_path}")
+else:
+    print(f"目录已存在: {save_path}")
 
-    def get_discharge_cycles(self, battery_id):
-        """
-        获取指定电池的所有放电循环元数据
-        按 uid (操作顺序) 排序
-        """
-        battery_data = self.metadata[self.metadata['battery_id'] == battery_id]
-        # 筛选 type 为 'discharge' 的记录
-        discharge_data = battery_data[battery_data['type'] == 'discharge']
-        return discharge_data.sort_values('uid')
+# ==========================================
+# 4. 按顺序复制并重命名
+# ==========================================
+count = 0
+# enumerate 用于同时获取索引(从0开始)和文件名
+for i, filename in enumerate(data_fils):
+    # 构造源文件完整路径
+    src_file = os.path.join(data_path, filename)
+    
+    # 构造目标文件名 (按顺序命名为 1.csv, 2.csv ...)
+    new_filename = f"{i + 1}.csv"
+    dst_file = os.path.join(save_path, new_filename)
+    
+    try:
+        # 检查源文件是否存在
+        if os.path.exists(src_file):
+            shutil.copy(src_file, dst_file)
+            count += 1
+            if count % 10 == 0: # 每复制10个打印一次，避免刷屏
+                print(f"进度: 已复制 {count} 个文件 -> {new_filename}")
+        else:
+            print(f"[警告] 源文件缺失: {filename}")
+            
+    except Exception as e:
+        print(f"[错误] 复制 {filename} 时出错: {e}")
 
-    def load_cycle_timeseries(self, filename):
-        """
-        加载单个循环的详细CSV数据
-        """
-        filepath = os.path.join(self.data_dir, filename)
-        if not os.path.exists(filepath):
-            # 尝试在子文件夹中查找（部分解压工具可能会创建嵌套结构）
-            # 这里简化处理，假设在 data/ 根目录下
-            return None
-        return pd.read_csv(filepath)
+print(f"\n处理完成！共成功复制 {count} 个文件到:\n{save_path}")

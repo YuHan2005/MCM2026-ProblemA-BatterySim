@@ -23,7 +23,7 @@ class PhysicsBattery:
         self.B_vol = 3.18761375
         
         # --- 2. KiBaM 动力学参数 ---
-        self.c = 0.7
+        self.c = 0.65
         self.k_diff_ref = 0.05 
         self.Ea_diff = 20000.0
         
@@ -183,13 +183,19 @@ class PhysicsBattery:
 
         # --- 5. 电压计算 ---
         q_discharged_ah = self.design_capacity_ah - (self.y1 + self.y2) / 3600.0
-        if q_discharged_ah >= self.design_capacity_ah:
-            volt_term = self.V_cutoff
-        else:
-            # Shepherd 方程计算 OCV
-            ocv = self.E0 - self.K * (self.design_capacity_ah / max(1e-3, self.design_capacity_ah - q_discharged_ah)) \
-                  + self.A_vol * np.exp(-self.B_vol * q_discharged_ah)
-            volt_term = ocv - current_a * r_total
+        remaining_cap = max(1e-4, self.design_capacity_ah - q_discharged_ah) # 加上 1e-4 防止除零
+    
+        # Shepherd 方程计算 OCV (保持原公式)
+        ocv = self.E0 - self.K * (self.design_capacity_ah / remaining_cap) \
+            + self.A_vol * np.exp(-self.B_vol * q_discharged_ah)
+        
+        # 计算端电压
+        volt_term = ocv - current_a * r_total
+        
+        # 可选：只在最后输出时做一个极端的物理限制（比如不能低于 0V），
+        # 但在拟合过程中，让它掉下去更有利于梯度下降找到正确的容量。
+        if volt_term < 0.1: 
+            volt_term = 0.1
 
         # --- 6. 数据记录 ---
         # (确保 self.history 字典已在 __init__ 中初始化)
